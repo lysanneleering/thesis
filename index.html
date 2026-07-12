@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: 'Inter', sans-serif;
+            background: #f5f7fb;
+            color: #1a2c3e;
+            height: 100vh;
+            overflow: hidden;
+        }
+        .container { display: flex; height: 100vh; }
+
+        .graph-container { flex: 3; background: #f8fafd; position: relative; }
+        svg { width: 100%; height: 100%; cursor: grab; }
+        svg:active { cursor: grabbing; }
+
+        .info-panel {
+            flex: 1.1;
+            min-width: 280px;
+            background: white;
+            border-left: 1px solid #e2e8f0;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+        .panel-header { padding: 20px 24px 16px; border-bottom: 1px solid #e2e8f0; }
+        .panel-header h1 { font-size: 1.3rem; color: #1f3a5f; margin: 0 0 12px 0; }
+
+        .stat-row { display: flex; gap: 8px; flex-wrap: wrap; }
+        .stat-card {
+            background: #f1f5f9;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: #475569;
+        }
+
+        #node-detail-container { padding: 16px; flex: 1; }
+        .node-detail {
+            padding: 16px;
+            border-radius: 12px;
+            border: 1px solid #eef2f8;
+            background: #fff;
+        }
+        .badge-type {
+            padding: 3px 10px;
+            border-radius: 8px;
+            font-size: 0.68rem;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+        .badge-theorem    { background: #e6f7ec; color: #1f6e43; }
+        .badge-lemma      { background: #fff0db; color: #b45f1b; }
+        .badge-proof      { background: #e8eefe; color: #2c3eaa; }
+        .badge-proposition{ background: #f3e8ff; color: #7c3aed; }
+        .badge-definition { background: #fce7f3; color: #9d174d; }
+        .badge-corollary  { background: #ecfdf5; color: #065f46; }
+
+
+        .content-preview {
+            font-size: 0.8rem;
+            color: #334155;
+            background: #f9fafc;
+            padding: 12px;
+            border-radius: 8px;
+            margin: 12px 0;
+            border-left: 4px solid #87b9e0;
+            font-family: monospace;
+            max-height: 180px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .meta-row { font-size: 0.75rem; color: #64748b; margin: 4px 0; }
+        .ref-chip {
+            display: inline-block;
+            background: #eef2ff;
+            padding: 3px 9px;
+            border-radius: 12px;
+            margin: 3px 3px 0 0;
+            font-size: 0.68rem;
+            cursor: pointer;
+            border: 1px solid #c7d2fe;
+        }
+        .ref-chip:hover { background: #c7d2fe; }
+
+        .zoom-controls {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .zoom-controls button {
+            background: white;
+            border: 1px solid #cbd5e1;
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 0.85rem;
+            color: #475569;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .zoom-controls button:hover { background: #f1f5f9; }
+
+        .legend {
+            position: absolute;
+            top: 16px;
+            left: 16px;
+            background: rgba(255,255,255,0.92);
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 10px 14px;
+            font-size: 0.72rem;
+        }
+        .legend-item { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+        .legend-dot  { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+
+        .empty-state { text-align: center; padding: 40px 20px; color: #94a3b8; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="graph-container">
+        <svg id="graph-svg"></svg>
+        <div class="zoom-controls">
+            <button id="zoom-in-btn"  title="Zoom in"><i class="fas fa-plus"></i></button>
+            <button id="zoom-out-btn" title="Zoom out"><i class="fas fa-minus"></i></button>
+            <button id="reset-view-btn" title="Reset view"><i class="fas fa-home"></i></button>
+        </div>
+        <div class="legend" id="legend"></div>
+    </div>
+
+    <div class="info-panel">
+        <div class="panel-header">
+            <h1>Dependency Graph</h1>
+            <div class="stat-row">
+                <div class="stat-card">Nodes: <span id="node-count">0</span></div>
+                <div class="stat-card">Edges: <span id="edge-count">0</span></div>
+            </div>
+        </div>
+        <div id="node-detail-container">
+            <div class="empty-state">
+                <p>Click a node to view its details.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Injected by run.py.
+// __GRAPH_DATA_PLACEHOLDER__
+
+// Fallback demo data.
+if (typeof graphData === 'undefined') {
+    var graphData = {
+        nodes: [
+            { id: "theorem_1",    type: "theorem",    page: 3,  number: "1",   confidence: 0.95, text: "Theorem 1. For all n ≥ 1, the sum of the first n natural numbers equals n(n+1)/2." },
+            { id: "lemma_2_1",    type: "lemma",      page: 4,  number: "2.1", confidence: 0.91, text: "Lemma 2.1. Let S_n denote the partial sum. Then S_n - S_{n-1} = n." },
+            { id: "proof_1",      type: "proof",      page: 3,  number: "",    confidence: 0.88, text: "Proof. By induction. The base case n=1 is trivial. Assuming the result holds for n-1, by Lemma 2.1 we have..." },
+            { id: "corollary_1",  type: "corollary",  page: 5,  number: "1",   confidence: 0.82, text: "Corollary 1. As a consequence of Theorem 1, the average of the first n natural numbers is (n+1)/2." },
+        ],
+        edges: [
+            { source: "proof_1",     target: "theorem_1",  method: "explicit", confidence: 1.0 },
+            { source: "proof_1",     target: "lemma_2_1",  method: "explicit", confidence: 1.0 },
+            { source: "corollary_1", target: "theorem_1",  method: "explicit", confidence: 1.0 },
+        ]
+    };
+}
+
+const COLORS = {
+    theorem:     "#2c7da0",
+    lemma:       "#e9a23b",
+    proof:       "#5f6caf",
+    proposition: "#9b6b9e",
+    definition:  "#c2185b",
+    corollary:   "#00897b",
+    conjecture:  "#6d4c41",
+};
+
+const LETTERS = {
+    theorem:     "T",
+    lemma:       "L",
+    proof:       "Pf",
+    proposition: "Pr",
+    definition:  "D",
+    corollary:   "C",
+    conjecture:  "Cj",
+};
+
+function getVisibleData() {
+    return {
+        nodes: graphData.nodes.map(n => ({...n})),
+        edges: graphData.edges.map(e => ({...e})),
+    };
+}
+
+// D3 setup.
+const svgEl    = document.getElementById("graph-svg");
+const svg      = d3.select(svgEl);
+const mainGroup = svg.append("g");
+let simulation, link, node;
+
+svg.append("defs").append("marker")
+    .attr("id", "arrow")
+    .attr("viewBox", "0 -5 10 10")
+    .attr("refX", 28)
+    .attr("refY", 0)
+    .attr("markerWidth", 6)
+    .attr("markerHeight", 6)
+    .attr("orient", "auto")
+    .append("path")
+    .attr("d", "M0,-5L10,0L0,5")
+    .attr("fill", "#94a3b8");
+
+const zoomBehavior = d3.zoom()
+    .scaleExtent([0.2, 4])
+    .on("zoom", e => mainGroup.attr("transform", e.transform));
+svg.call(zoomBehavior);
+
+document.getElementById("zoom-in-btn").onclick  = () => svg.transition().call(zoomBehavior.scaleBy, 1.3);
+document.getElementById("zoom-out-btn").onclick = () => svg.transition().call(zoomBehavior.scaleBy, 0.7);
+document.getElementById("reset-view-btn").onclick = () => svg.transition().call(zoomBehavior.transform, d3.zoomIdentity);
+
+function buildLegend(types) {
+    const legend = document.getElementById("legend");
+    legend.innerHTML = [...new Set(types)].map(t => `
+        <div class="legend-item">
+            <div class="legend-dot" style="background:${COLORS[t] || '#888'}"></div>
+            <span>${t.charAt(0).toUpperCase() + t.slice(1)}</span>
+        </div>
+    `).join("");
+}
+
+function render() {
+    const { nodes, edges } = getVisibleData();
+
+    // Update stats.
+    document.getElementById("node-count").innerText = nodes.length;
+    document.getElementById("edge-count").innerText = edges.length;
+    buildLegend(nodes.map(n => n.type));
+
+    // Clear previous graph.
+    mainGroup.selectAll("*").remove();
+    if (simulation) simulation.stop();
+
+    const width  = svgEl.clientWidth;
+    const height = svgEl.clientHeight;
+
+    // Build node lookup.
+    const nodeById = Object.fromEntries(nodes.map(n => [n.id, n]));
+
+    // Resolve edge source/target to node objects.
+    const resolvedEdges = edges
+        .filter(e => nodeById[e.source] && nodeById[e.target])
+        .map(e => ({ ...e, source: nodeById[e.source], target: nodeById[e.target] }));
+
+    // Draw edges.
+    link = mainGroup.append("g")
+        .selectAll("line")
+        .data(resolvedEdges)
+        .enter().append("line")
+        .attr("stroke", d => d.method === "explicit" ? "#94a3b8" : "#f8a4c8")
+        .attr("stroke-width", d => d.method === "explicit" ? 2 : 1.5)
+        .attr("stroke-dasharray", d => d.method === "implicit" ? "4,3" : null)
+        .attr("marker-end", "url(#arrow)");
+
+    // Draw node groups.
+    node = mainGroup.append("g")
+        .selectAll(".node-group")
+        .data(nodes)
+        .enter().append("g")
+        .attr("class", "node-group")
+        .call(d3.drag()
+            .on("start", (e, d) => { if (!e.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+            .on("drag",  (e, d) => { d.fx = e.x; d.fy = e.y; })
+            .on("end",   (e, d) => { if (!e.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; }));
+
+    node.append("circle")
+        .attr("r", 22)
+        .attr("fill", d => COLORS[d.type] || "#888")
+        .attr("stroke", "#fff")
+        .attr("stroke-width", 2)
+        .style("cursor", "pointer")
+        .on("click", (e, d) => showDetails(d, nodeById, resolvedEdges));
+
+    node.append("text")
+        .attr("text-anchor", "middle")
+        .attr("dy", "0.35em")
+        .attr("fill", "white")
+        .attr("font-size", "10px")
+        .attr("font-weight", "700")
+        .style("pointer-events", "none")
+        .text(d => LETTERS[d.type] || "?");
+
+    node.append("text")
+        .attr("dy", 35)
+        .attr("text-anchor", "middle")
+        .attr("font-size", "9px")
+        .attr("font-weight", "600")
+        .attr("fill", "#475569")
+        .style("pointer-events", "none")
+        .text(d => nodeLabel(d));
+
+    simulation = d3.forceSimulation(nodes)
+        .force("link",      d3.forceLink(resolvedEdges).id(d => d.id).distance(130))
+        .force("charge",    d3.forceManyBody().strength(-450))
+        .force("center",    d3.forceCenter(width / 2, height / 2))
+        .force("collision", d3.forceCollide().radius(48));
+
+    simulation.on("tick", () => {
+        link
+            .attr("x1", d => d.source.x)
+            .attr("y1", d => d.source.y)
+            .attr("x2", d => d.target.x)
+            .attr("y2", d => d.target.y);
+        node.attr("transform", d => `translate(${d.x},${d.y})`);
+    });
+}
+
+function nodeLabel(d) {
+    const cap = d.type.charAt(0).toUpperCase() + d.type.slice(1);
+    return d.number ? `${cap} ${d.number}` : cap;
+}
+
+function showDetails(d, nodeById, edges) {
+    const container = document.getElementById("node-detail-container");
+
+    // Find incoming and outgoing edges for this node.
+    const outgoing = edges.filter(e => (e.source.id || e.source) === d.id);
+    const incoming = edges.filter(e => (e.target.id || e.target) === d.id);
+
+    const refs = outgoing.map(e => {
+        const tgt   = e.target;
+        const tgtId = tgt.id || tgt;
+        const tgtNode = nodeById[tgtId];
+        const lbl   = tgtNode ? nodeLabel(tgtNode) : tgtId;
+        const badge = e.method === "implicit" ? ' <span style="font-size:0.6rem;color:#9d174d">(implicit)</span>' : '';
+        return `<span class="ref-chip" onclick="highlightNode('${tgtId}')">${lbl}${badge}</span>`;
+    }).join("");
+
+    const usedBy = incoming.map(e => {
+        const src   = e.source;
+        const srcId = src.id || src;
+        const srcNode = nodeById[srcId];
+        const lbl   = srcNode ? nodeLabel(srcNode) : srcId;
+        return `<span class="ref-chip" onclick="highlightNode('${srcId}')">${lbl}</span>`;
+    }).join("");
+
+    const content = `
+        <span class="badge-type badge-${d.type}">${d.type}</span>
+        <h3 style="margin:10px 0 6px; font-size:1rem">${nodeLabel(d)}</h3>
+        <div class="meta-row"><i class="fas fa-file" style="width:14px"></i> Page ${d.page || "?"}</div>
+        <div class="meta-row"><i class="fas fa-chart-bar" style="width:14px"></i> Confidence: ${(d.confidence * 100).toFixed(0)}%</div>
+        <div class="content-preview">${(d.text || "").slice(0, 600)}${(d.text || "").length > 600 ? "…" : ""}</div>
+        <div style="font-size:0.75rem; margin-top:8px">
+            <strong>References:</strong><br>${refs || '<span style="color:#94a3b8">none</span>'}
+        </div>
+        ${usedBy ? `<div style="font-size:0.75rem; margin-top:8px"><strong>Used by:</strong><br>${usedBy}</div>` : ""}
+    `;
+
+    container.innerHTML = `<div class="node-detail">${content}</div>`;
+}
+
+// Simple highlight.
+function highlightNode(id) {
+    console.log("Navigate to:", id);
+}
+
+render();
+</script>
+</body>
+</html>
